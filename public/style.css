@@ -1,1 +1,61 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #eee;
+  margin: 0;
+  padding: 20px;
+}
 
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+h1 {
+  margin-bottom: 0.4em;
+}
+
+#status {
+  font-size: 1.2em;
+  margin: 1em 0;
+  min-height: 1.5em;
+}
+
+canvas {
+  background: #0a0a0a;
+  border: 8px solid #444;
+  border-radius: 12px;
+  box-shadow: 0 0 30px #000;
+  touch-action: none;
+}
+
+.controls {
+  margin: 1.5em 0;
+  display: flex;
+  gap: 1em;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+button, label {
+  font-size: 1.1em;
+  padding: 0.6em 1.2em;
+  border-radius: 6px;
+}
+
+button {
+  background: #444;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  background: #666;
+}
