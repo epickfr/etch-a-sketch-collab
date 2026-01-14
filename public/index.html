@@ -1,1 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Collaborative Etch A Sketch (1 min turns)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Shared Etch A Sketch — 60 second turns</h1>
+    
+    <div id="status">Connecting...</div>
+    
+    <div class="controls">
+      <button id="btn-turn">Take my turn (60s)</button>
+      <button id="btn-clear">Clear (only during your turn)</button>
+      <label>Color: <input type="color" id="color" value="#000000"></label>
+    </div>
 
+    <canvas id="canvas" width="800" height="600"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const status = document.getElementById('status');
+    const btnTurn = document.getElementById('btn-turn');
+    const btnClear = document.getElementById('btn-clear');
+    const colorPicker = document.getElementById('color');
+
+    let ws = null;
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+    let myTurn = false;
+
+    // ─── Connect ────────────────────────────────────────
+    function connect() {
+      ws = new WebSocket('wss://' + location.host);
+
+      ws.onopen = () => {
+        status.textContent = 'Connected ✓';
+        btnTurn.disabled = false;
+      };
+
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+
+        switch (data.type) {
+          case 'init':
+            myTurn = data.canDraw;
+            updateUI();
+            break;
+
+          case 'your-turn':
+            myTurn = true;
+            status.textContent = 'YOUR TURN! 60 seconds...';
+            btnTurn.disabled = true;
+            startCountdown(data.duration);
+            break;
+
+          case 'new-turn':
+            myTurn = false;
+            status.textContent = 'Someone is drawing...';
+            btnTurn.disabled = true;
+            startCountdown(data.timeLeft);
+            break;
+
+          case 'turn-ended':
+            myTurn = false;
+            status.textContent = data.message || 'Turn ended — next person can take turn';
+            btnTurn.disabled = false;
+            break;
+
+          case 'turn-info':
+            btnTurn.disabled = true;
+            status.textContent = `Wait ${Math.ceil(data.timeLeft/1000)}s...`;
+            break;
+
+          case 'draw':
+            drawLine(data.x0, data.y0, data.x1, data.y1, data.color);
+            break;
+
+          case 'clear':
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        status.textContent = 'Disconnected — reconnecting...';
+        setTimeout(connect, 1500);
+      };
+    }
+
+    connect();
+
+    // ─── Canvas drawing ─────────────────────────────────
+    function drawLine(x0, y0, x1, y1, color = '#000') {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (!myTurn) return;
+      drawing = true;
+      const pos = getPos(e);
+      lastX = pos.x;
+      lastY = pos.y;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!drawing || !myTurn) return;
+      const pos = getPos(e);
+      drawLine(lastX, lastY, pos.x, pos.y, colorPicker.value);
+      ws.send(JSON.stringify({
+        type: 'draw',
+        x0: lastX, y0: lastY,
+        x1: pos.x, y1: pos.y,
+        color: colorPicker.value
+      }));
+      lastX = pos.x;
+      lastY = pos.y;
+    });
+
+    canvas.addEventListener('mouseup',   () => drawing = false);
+    canvas.addEventListener('mouseout',  () => drawing = false);
+
+    // Mobile/touch support
+    canvas.addEventListener('touchstart', e => {
+      if (!myTurn) return;
+      e.preventDefault();
+      drawing = true;
+      const pos = getPos(e.touches[0]);
+      lastX = pos.x; lastY = pos.y;
+    }, {passive: false});
+
+    canvas.addEventListener('touchmove', e => {
+      if (!drawing || !myTurn) return;
+      e.preventDefault();
+      const pos = getPos(e.touches[0]);
+      drawLine(lastX, lastY, pos.x, pos.y, colorPicker.value);
+      ws.send(JSON.stringify({
+        type: 'draw',
+        x0: lastX, y0: lastY,
+        x1: pos.x, y1: pos.y,
+        color: colorPicker.value
+      }));
+      lastX = pos.x; lastY = pos.y;
+    }, {passive: false});
+
+    // Buttons
+    btnTurn.onclick = () => {
+      if (ws) ws.send(JSON.stringify({ type: 'request-turn' }));
+    };
+
+    btnClear.onclick = () => {
+      if (myTurn && ws) {
+        ws.send(JSON.stringify({ type: 'clear' }));
+      }
+    };
+
+    // Simple countdown display
+    function startCountdown(ms) {
+      let remaining = ms;
+      const iv = setInterval(() => {
+        remaining -= 1000;
+        if (remaining <= 0) {
+          clearInterval(iv);
+          if (myTurn) {
+            myTurn = false;
+            status.textContent = 'Time up! Waiting for next turn...';
+            btnTurn.disabled = false;
+          }
+        } else if (!myTurn) {
+          status.textContent = `Someone drawing — ${Math.ceil(remaining/1000)}s left`;
+        }
+      }, 1000);
+    }
+
+    function updateUI() {
+      btnTurn.disabled = !myTurn;
+      btnClear.disabled = !myTurn;
+    }
+  </script>
+</body>
+</html>
